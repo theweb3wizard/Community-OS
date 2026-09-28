@@ -34,8 +34,7 @@ export default async function LoginPage({
       </p>
       <h1 className="mt-2 text-3xl font-semibold tracking-tight">Sign in</h1>
       <p className="mt-2 text-sm text-zinc-500">
-        Foundation build: local operator sign-in. OAuth / team accounts land in
-        a later prompt.
+        Operator sign-in for your CommunityOS workspace.
       </p>
       {params.error === "invalid" ? (
         <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">

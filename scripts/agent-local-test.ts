@@ -29,7 +29,7 @@ import { executeTool, listTools, ToolNotRegisteredError } from "../src/lib/agent
 import type { TelegramClient } from "../src/lib/telegram/client";
 import type { NormalizedEvent } from "../src/lib/telegram/normalize";
 
-// Prompt 3 automated tests. Telegram is stubbed (records calls, can fail on
+// Agent runtime tests. Telegram is stubbed (records calls, can fail on
 // demand); the database is the REAL Neon instance. Everything created is
 // deleted afterwards. Scenario markers ([spam-test] etc.) drive the
 // deterministic provider — documented test-only triggers.
@@ -160,7 +160,7 @@ async function main() {
     .from(communities)
     .where(eq(communities.name, "Wizard Test Community"))
     .limit(1);
-  if (!community) throw new Error("Wizard Test Community missing — run Prompt 2 live test first");
+  if (!community) throw new Error("Wizard Test Community missing — connect Telegram and send a message first");
   const communityId = community.id;
   const startedAt = new Date();
   const runId = randomUUID().slice(0, 8);
@@ -190,7 +190,7 @@ async function main() {
   const track = <T extends { cycleId: string }>(r: T): T => { cycleIds.push(r.cycleId); return r; };
 
   try {
-    // 1. REAL message replay (Prompt 2 live row tgId 205)
+    // 1. REAL message replay (live row tgId 205)
     {
       const calls: Call[] = [];
       const r = track(await runAgentCycle(

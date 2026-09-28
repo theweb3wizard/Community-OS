@@ -18,7 +18,7 @@ import { getDashboardStats, getInboxItems, getMessageContext } from "../src/lib/
 import { resolveCommunity } from "../src/lib/dashboard/community";
 import { createSource } from "../src/lib/ai/knowledge";
 
-// Prompt 6 onboarding/integration test: a fresh community walks the full
+// Onboarding/integration test: a fresh community walks the full
 // operator flow at the data layer (create → codes → policy → knowledge →
 // support lifecycle → inbox/trace reflect it), then everything is removed.
 

@@ -1,311 +1,163 @@
-# CommunityOS — Foundation (Prompt 1)
+# CommunityOS
 
 AI-native community operations for Web3 Telegram communities.
 
-Central loop: **OBSERVE → UNDERSTAND → DECIDE → AUTHORIZE → ACT → LOG → ESCALATE.**
-The AI recommends; the application authorizes. No unrestricted autonomous actions.
+CommunityOS observes Telegram activity, interprets it with AI, and acts only
+within policy. The central loop is
+**OBSERVE → UNDERSTAND → DECIDE → AUTHORIZE → ACT → LOG → ESCALATE** — the
+model recommends, the application authorizes. There are no unrestricted
+autonomous actions.
 
-> Scope of this build (Prompt 1): application foundation only — Next.js +
-> TypeScript + Tailwind shell, auth foundation, dashboard shell with truthful
-> empty states, Neon/Drizzle schema, env plumbing. **No Telegram agent, no AI
-> providers yet.** Those land in Prompts 2–7.
+## How it works
 
-## Stack (verified against official docs, Sep 2026)
+```text
+Telegram → Bot API → webhook → normalize → resolve community/member
+  → persist → agent runtime → context → decision (Jev, Gemini fallback)
+  → policy (AUTO / APPROVAL / ESCALATE / IGNORE) → tools → Telegram API
+  → activity log → PostgreSQL
+```
 
-| Concern | Choice | Source |
-|---|---|---|
-| App | Next.js 16.3.6 App Router, React 19, TypeScript 5 | `create-next-app@latest`, Next.js docs |
-| CSS | Tailwind CSS v4, CSS-first (`@import "tailwindcss"`, `@tailwindcss/postcss`) | Tailwind v4 Next.js guide |
-| DB | Neon PostgreSQL (`DATABASE_URL`), pooled for app / direct for migrations | Neon “Connect from any app”, pooling, Drizzle-Neon guides |
-| ORM | Drizzle ORM (`drizzle-orm/neon-http` over `@neondatabase/serverless`) — Vercel-compatible, no TCP needed | Drizzle “Connect Neon” docs |
-| Vectors | `pgvector` (`vector(1536)` + HNSW cosine index; `CREATE EXTENSION vector` migration) | Drizzle pgvector guide |
-| Auth (foundation) | Local operator sign-in: `jose` HS256 JWT in httpOnly cookie + demo credentials from env. OAuth/teams deferred. | `jose` + Next.js server-component pattern |
-| Env | `zod` validation (`src/lib/env.ts`), never throws at import | — |
+- **Decisions are structured data**, never raw model text. Tool targets
+  (chat, message, user) always come from the triggering event, never from
+  model output.
+- **Policy is the sole authority** for Telegram mutations. Corroborated
+  high-confidence spam can auto-delete; restrictions, warnings, and replies
+  require human approval; sensitive topics escalate to operators.
+- **Approvals** reach the linked administrator as a Telegram DM with
+  Approve/Reject buttons, are claimed atomically (execute-at-most-once),
+  and are fully auditable on the dashboard.
+- **Support answers** come only from trusted knowledge (pgvector retrieval)
+  with HIGH/MEDIUM/LOW confidence gating — uncovered questions escalate
+  instead of being invented.
 
-### Notable decision: no `next-auth` in Prompt 1
+## Stack
 
-`next-auth@5.0.0-beta.29` declares peer `next@^14 || ^15`, which conflicts
-with the scaffolded Next 16.3.6 (verified via `npm ERESOLVE`). Rather than
-force a broken peer tree, Prompt 1 uses a minimal `jose`-based session — fully
-compatible with Next 16 and Vercel serverless. Auth.js (or equivalent) can be
-adopted in a later prompt once it supports Next 16.
+| Concern | Choice |
+|---|---|
+| App | Next.js 16 App Router, React 19, TypeScript |
+| UI | Tailwind CSS v4, server components |
+| Database | Neon PostgreSQL + Drizzle ORM (`neon-http`, Vercel-compatible) |
+| Vectors | `pgvector` (`vector(1536)`, HNSW cosine index) |
+| Auth | Operator sign-in, `jose` HS256 JWT in an httpOnly cookie |
+| AI | Gemini (`@google/genai`: structured decisions, answers, embeddings, summaries) with Jev (TypeSafe decision model via OpenRouter) as the optional structured primary |
+| Bot platform | Telegram Bot API (webhooks) |
 
-No Pinecone/Qdrant/Redis/Mongo, no separate backend service, no Discord.
+Single repository, single database, no extra infrastructure. Auth uses a
+minimal `jose`-based session rather than `next-auth`, whose v5 beta peer
+range does not support Next 16.
 
 ## Quickstart
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill in DATABASE_URL (Neon Console → Connect)
+cp .env.example .env.local   # fill in values below
 npm run dev                  # http://localhost:3000
 ```
 
-Demo sign-in (dev defaults, override in `.env.local`):
+Development sign-in (override in `.env.local`):
 
 - email `operator@communityos.local`
 - password `ChangeMe123!`
 
-## Scripts
+## Environment variables
 
-| Command | Purpose |
-|---|---|
-| `npm run dev` | local dev server |
-| `npm run build` | production build |
-| `npm run lint` | eslint |
-| `npx tsc --noEmit` | typecheck |
-| `npm run db:generate` | generate Drizzle SQL (works offline) |
-| `npm run db:push` / `db:migrate` | apply schema (needs `DATABASE_URL*`) |
-| `npm run db:check` | real `select 1` read check (needs `DATABASE_URL*`) |
-| `GET /api/health/db` | runtime DB status JSON |
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | yes | Neon pooled connection string (app runtime) |
+| `DATABASE_URL_UNPOOLED` | yes | Neon direct connection string (migrations) |
+| `AUTH_SECRET` | yes (prod) | Session signing secret, min 16 chars |
+| `AUTH_DEMO_EMAIL` / `AUTH_DEMO_PASSWORD` | dev | Operator credentials |
+| `TELEGRAM_BOT_TOKEN` | for Telegram | Bot token from @BotFather (server only) |
+| `TELEGRAM_WEBHOOK_SECRET` | for Telegram | Webhook verification secret (`A-Za-z0-9_-`, 16–256 chars) |
+| `APP_URL` | for Telegram | Public https base URL (Telegram cannot reach localhost) |
+| `GEMINI_API_KEY` | for AI | Google AI Studio key |
+| `GEMINI_MODEL` / `GEMINI_EMBED_MODEL` | no | Defaults: `gemini-3.8-flash` / `gemini-embedding-001` |
+| `JEV_API_KEY` | no | OpenRouter key for the Jev decision primary (absent = Gemini handles everything) |
+| `JEV_MODEL` / `JEV_BASE_URL` | no | Defaults: `typesafe/jev-1.13` / `https://openrouter.ai` |
 
-## Data model (`src/db/schema.ts`)
+Never commit `.env.local`. No key is ever exposed to client code.
 
-`users, communities, telegram_connections, members, messages,
-moderation_events, support_issues, knowledge_sources (+ vector
-knowledge_chunks), alerts, approvals, agent_actions, policies, activity_logs`,
-plus Prompt 2 plumbing: `community_link_codes` (single-use `/connect` +
-`/admin` pairing codes) and `processed_updates` (webhook redelivery dedupe).
-`knowledge_chunks.embedding` is `vector(1536)` with an HNSW cosine index.
-Telegram numeric IDs are stored as TEXT (Bot API IDs can exceed 32 bits);
-usernames are display-only, never identity keys.
+## Database setup
 
-## Telegram (Prompt 2: real Bot API integration)
+```bash
+npm run db:generate   # author migrations offline into drizzle/
+npx drizzle-kit migrate   # apply to Neon (needs DATABASE_URL_UNPOOLED)
+npm run db:check      # live select-1 check
+GET /api/health/db    # runtime DB status
+```
 
-Verified against the official Bot API reference + webhooks guide (Bot API
-10.x, Sep 2026). Key behaviors the implementation depends on:
+Schema covers users, communities, Telegram connections + link codes,
+members, messages, moderation/support/alert/approval/action/policy records,
+knowledge sources + vector chunks, community settings, and an append-only
+activity log. Telegram numeric IDs are stored as TEXT (they can exceed 32
+bits); usernames are display-only, never identity keys.
 
-- Webhook delivery is HTTPS POST of an `Update` to `setWebhook(url)`; ports
-  443/80/88/8443; non-2xx responses are retried. The handler therefore always
-  returns 2xx after secret verification and records failures in
-  `activity_logs` instead of relying on retries.
-- `secret_token` (1–256 chars `[A-Za-z0-9_-]`) arrives as the
-  `X-Telegram-Bot-Api-Secret-Token` header and is compared timing-safely.
-- **Privacy mode is ON by default**: in groups the bot only sees
-  commands/replies/mentions unless privacy is disabled via @BotFather
-  `/setprivacy` (then re-add the bot) or the bot is an administrator.
-- Bots never receive other bots' messages; `my_chat_member` reports the bot
-  being added/removed; every `callback_query` must be answered.
-- Group → supergroup migration issues a new chat id (`migrate_to_chat_id`) —
-  the pipeline moves the community binding so history stays attached.
+## Telegram setup
 
-Setup:
-
-1. Create a bot with @BotFather → `TELEGRAM_BOT_TOKEN` in `.env.local`.
-2. `TELEGRAM_WEBHOOK_SECRET` (16–256 chars, `A-Za-z0-9_-`) in `.env.local`.
-3. `npm run telegram:info` — verifies token, shows privacy state + webhook.
-4. Expose the app over public https (`APP_URL`) — deploy or tunnel — then
-   `npm run telegram:webhook:set` (subscribed updates: `message`,
+1. Create a bot with @BotFather → `TELEGRAM_BOT_TOKEN`.
+2. `npm run telegram:info` — verifies the token and shows group-privacy state.
+3. For full message visibility, either make the bot an administrator or
+   disable privacy via @BotFather `/setprivacy` (then re-add it).
+4. Expose the app over public https (`APP_URL`) — deploy or tunnel —
+   then `npm run telegram:webhook:set` (subscribed: `message`,
    `edited_message`, `callback_query`, `my_chat_member`).
-5. Dashboard → Telegram: create community → generate codes → `/connect CODE`
-   in the group, `/admin CODE` in bot DM → Verify + Test DM.
+5. Dashboard → Telegram: create a community, generate codes, send
+   `/connect CODE` in the group and `/admin CODE` in bot DM, then Verify
+   and Test DM.
 
-Service layer (`src/lib/telegram/client.ts`) exposes only curated methods
-(send/reply/edit/delete/restrict/admin-notify/callback-answer/verification);
-there is no generic "call any Bot API method" path for the AI layer.
-Pipeline stages (`src/lib/telegram/pipeline.ts`): receive → normalize →
-resolve community → resolve member → persist → process (commands/membership).
-Approval/rejection callback *execution* is intentionally deferred to Prompt 3.
+## AI setup
 
-## Agent runtime (Prompt 3: orchestration, no model yet)
+- Add `GEMINI_API_KEY` for structured decisions, support answers,
+  embeddings, and summaries.
+- Optionally add `JEV_API_KEY` (OpenRouter) to route classifications
+  through the Jev decision model first, with Gemini as automatic fallback.
+- Knowledge: Dashboard → Knowledge (text/FAQ/URL/docs/policies/
+  announcements). Retrieval uses cosine similarity over pgvector with
+  per-community thresholds in Settings.
 
-`src/lib/agent/` implements the control loop:
+## Testing
 
-```text
-event → loadContext → provider.decide → validate → policy.evaluate
-      → execute | queue approval | deny → persist all → log
-```
+| Command | Coverage |
+|---|---|
+| `npm run telegram:test` | Ingestion: normalize, resolve, persist, dedupe, link codes, callbacks (27) |
+| `npm run agent:test` | Runtime: all classifications, policy gating, failures, tool safety (38) |
+| `npm run approvals:test` | Approvals: auto/approve/reject/unauthorized/duplicate/human-only/failure (38) |
+| `npm run ai:test` | Chunking, schemas, Jev mapping, routing gate, fallback, SSRF guards (36) |
+| `npm run ai:live` | Live Gemini + Neon matrix (needs key; skips cleanly without) |
+| `npm run onboarding:test` | Fresh-community flow + message trace (10) |
+| `npx tsc --noEmit` · `npm run lint` · `npm run build` | Type, lint, production build |
 
-- `types.ts` — `AgentContext`, `AgentDecision`, `ProposedAction`,
-  `PolicyDecision` (ALLOW/NEEDS_APPROVAL/DENY), `ActionResult`, `CycleResult`.
-  Model output never carries authority and never supplies execution targets:
-  chat/message/user IDs are always re-derived from the triggering event.
-- `context.ts` + `prechecks.ts` — bounded context (community, member,
-  message, ≤10 recent messages truncated to 300 chars, active policies) plus
-  pure deterministic signals (blocked/allowlisted domains, repeats, flooding,
-  admin role, control commands). Policies come from the `policies` table.
-- `provider.ts` — `DecisionProvider` interface + `DeterministicTestProvider`
-  (explicit `[spam-test]`/`[phish-test]`/`[support-test]`/`[escalate-test]`
-  markers; test-only). Output is zod-validated; unknown tools are rejected
-  before policy stage.
-- `policy.ts` — conservative v0: only corroborated high-confidence
-  SPAM/PHISHING deletions auto-execute (never for admins); restrict/warn/reply
-  always need human approval; alert/escalate always allowed (observability).
-- `tools.ts` — exactly 6 registered tools; the registry itself throws
-  `ToolNotRegisteredError` on anything else (defense in depth).
-- `store.ts` / `runtime.ts` — persistence boundary (idempotent single writes;
-  neon-http has no interactive transactions, so no multi-statement atomicity
-  is assumed) and the cycle orchestrator with per-stage failure containment.
-- Results persist to `agent_actions` (+ `alerts`, `approvals`, `activity_logs`
-  with correlating `cycleId`). Not yet wired to the live webhook — the runtime
-  runs on demand/tests until policy review UI lands.
+All suites run against real Neon with stubbed external APIs and clean up
+after themselves. Test markers (`[spam-test]` etc.) drive the deterministic
+provider — test-only triggers, never production logic.
 
-Test: `npm run agent:test` (38 checks: real-message replay, all five
-classifications, admin immunity, rogue/malformed decisions, Telegram failure,
-DB failure, unknown community, control-command skip, tool safety, cleanup).
+## Deployment
 
-## AI layer (Prompt 4: decisions + trusted knowledge)
+Designed for Vercel: no custom server, no TCP dependencies
+(`drizzle-orm/neon-http` everywhere). Set all environment variables in the
+project settings, deploy, then register the webhook against the public URL.
+Run migrations against Neon before or after deploy.
 
-`src/lib/ai/` — providers recommend, policy still authorizes, tools still act.
+## Security model
 
-- `gemini.ts` — `@google/genai` wrapper (`generateStructured` via
-  `responseJsonSchema` + `responseMimeType: application/json`,
-  `generateText`, `embed` at 1536 dims). Transient 429/503 retried; daily
-  quota exhaustion is never retried. Default model `gemini-3.8-flash`
-  (env-overridable; older `2.x` models are retired server-side),
-  embeddings `gemini-embedding-001` truncated to 1536 (a recommended size —
-  no schema migration needed).
-- `structured.ts` — validated decision shape (category, confidence, urgency,
-  spam/scam probabilities, support intent, rule violation, recommended
-  action, reasoning summary, requiresHuman, knowledgeRequired). Raw model
-  text can never invoke tools.
-- `jev.ts` + `providers.ts` — `JevDecisionProvider` (TypeSafe System One via
-  OpenRouter Decisions API: choice + noul + score questions, exact published
-  shapes), `GeminiDecisionProvider`, `FallbackDecisionProvider`
-  (Jev → Gemini, records `usedProvider`, safe error when all fail),
-  `semanticGate` (models only see messages where interpretation matters —
-  never service/control/bot/trivial texts). Jev is optional: no key means
-  the adapter stays isolated and reports not-live-tested.
-- `knowledge.ts` — trusted sources (text/faq/url/doc/announcement/policy) →
-  paragraph-aware chunking → Gemini embeddings → pgvector → cosine
-  retrieval with source attribution. URL fetching is basic server-side text
-  extraction (documented limitation).
-- `support.ts` — question → retrieval → grounded generation → confidence
-  gate: HIGH (≥0.6) answers from knowledge, MEDIUM answers cautiously +
-  ticket, LOW creates ticket + alert with a safe non-answer (no generation,
-  no invention). Thresholds calibrated on live similarity observations.
-- `intelligence.ts` — deterministic signals (velocity, top/recent terms,
-  repeat clusters, support/moderation/alert breakdowns) + optional Gemini
-  summary (safe-fails to null). Signals, not measurements.
+- Webhook verified by secret header (timing-safe); 401 without it; always
+  2xx afterwards so Telegram never retry-storms poison updates; 1 MB body
+  cap; best-effort logging.
+- Every mutating dashboard action requires a session; approval callbacks
+  require the linked administrator's Telegram ID plus an unguessable
+  per-approval token; claims are atomic single-statement updates.
+- Knowledge URL fetching is SSRF-guarded (public DNS only, default ports).
+- All SQL parameterized; all rendering React-escaped.
 
-Tests: `npm run ai:test` (33 offline checks) and `npm run ai:live`
-(requires `GEMINI_API_KEY`; structured, provider, embeddings, ingest,
-retrieval, grounded/ungrounded support, Jev-failure fallback, total
-failure, summary — with full cleanup). Dashboard → Knowledge manages
-sources (list + ingest with chunk counts).
+## Limitations
 
-## Policy + approvals (Prompt 5: what the agent may do)
-
-AI proposes, policy authorizes, tools execute — the model never decides its
-own permissions.
-
-- `src/lib/agent/policy.ts` — deterministic v1 engine. Verdicts:
-  `AUTO_EXECUTE` (corroborated high-confidence spam/phishing deletion,
-  alerts, escalations), `NEEDS_APPROVAL` (restrictions, warnings, replies,
-  ambiguous deletions), `ESCALATE` (human-only topics like contract/treasury/
-  governance/financial claims, model-flagged sensitivity), `IGNORE`
-  (admin senders, normal text proposing mutations). Risk scored per action.
-  Community overrides via `policies.rules`: `mode: strict`, per-tool
-  `requireApproval`, extra `humanOnlyPatterns`, `autoDeleteSpam` toggle.
-- `src/lib/approvals/service.ts` — approval lifecycle: unguessable
-  per-approval callback tokens (`ap:`/`rj:`, inside Telegram's 64-byte
-  limit), admin-identity check against the linked Telegram ID, expiry,
-  **atomic single-statement claim** (`UPDATE … WHERE status='pending' …
-  RETURNING` — execute-at-most-once without relying on transactions, which
-  neon-http doesn't offer), execution from server-recorded snapshots,
-  honest `failed` states with admin failure notices, security-event logging
-  for unauthorized attempts. Shared by the Telegram callback path
-  (`pipeline.ts`) and the dashboard (`/dashboard/approvals` list + Approve/
-  Reject with evidence).
-- Approval DMs carry Approve/Reject buttons plus an Open Dashboard link;
-  decisions edit the DM in place and always answer the callback query.
-
-Tests: `npm run approvals:test` (38 checks on live Neon: auto execution,
-approval queue + DM, callback approve/reject, unauthorized rejection,
-duplicate-callback idempotency, human-only escalation, strict mode,
-execution failure honesty, forged-token safety, cleanup).
-
-## Operator dashboard (Prompt 6: real state only)
-
-Every number and row comes from `src/lib/dashboard/queries.ts` — no fake
-metrics anywhere. Per-community picker on each page; truthful empty states
-when there is no data.
-
-- **Overview** — live counts (messages, members, moderation actions, open/
-  resolved support, pending approvals, open alerts) + recent activity.
-- **Inbox** — urgent / needs review / support / community issue / resolved
-  buckets assembled from alerts, approvals, support issues, and agent
-  actions, each linking to its context.
-- **Message trace** (`/dashboard/messages/[id]`) — one Telegram event
-  followed through message → sender → agent actions → approvals.
-- **Moderation** — every delete/restrict/warn with classification, evidence,
-  outcome, and links to the trace and approval.
-- **Support** — issue triage (open/resolved/closed) plus the answer and
-  escalation log with confidence and similarities.
-- **Knowledge** — sources with chunk counts, chunk inspection (retrieval
-  units), ingest, and two-step delete.
-- **Intelligence** — observed data (velocity, terms, repeat clusters,
-  breakdowns) kept visibly separate from the labeled AI summary, which is
-  generated on demand and stored in the activity timeline.
-- **Approvals** — pending queue with evidence + decided history.
-- **Activity** — event/actor/text search and filter over the timeline.
-- **Settings** — community rename, policy CRUD (mode, auto-delete, flood/
-  repeat thresholds, blocked/allowlisted domains, per-tool approval),
-  admin link/unlink, retrieval tuning, DM notification preferences.
-- **Onboarding** (`/onboarding`) — 7-step wizard (account → community →
-  Telegram → admin → policies → knowledge → automation) computed from real
-  state; nothing mandatory.
-
-Tests: `npm run onboarding:test` (fresh-community full flow + trace check).
-`community_settings` table holds retrieval/notification preferences honored
-by the support and approval flows.
-
-## Security model (audited Prompt 7)
-
-- Webhook: `X-Telegram-Bot-Api-Secret-Token` verified timing-safely; 401
-  without it; always 2xx afterwards (no retry storms); 1 MB body cap;
-  logging is best-effort so a DB outage can't wedge deliveries.
-- Dashboard: every mutating server action requires a session
-  (`requireOperator`); the layout redirect alone is not relied upon.
-- Approvals: unguessable per-approval tokens, linked-admin identity check,
-  atomic single-statement claims (execute-at-most-once without
-  transactions), expiry, forged-token safe no-ops, unauthorized attempts
-  logged as security events.
-- Knowledge URLs: SSRF-guarded (public DNS only, no private/loopback/
-  link-local targets, default ports only).
-- All SQL is parameterized (Drizzle); Telegram IDs stored as TEXT;
-  React-escaped rendering throughout; no `dangerouslySetInnerHTML`.
-
-## Limitations — not production-ready
-
-- **Single-operator trust model.** Any signed-in operator can act on every
-  community; there are no roles or per-community memberships. Demo
-  credentials (`operator@communityos.local`) are development-only.
-- **Runtime is not wired to the live webhook.** Ingestion persists and the
-  runtime is proven on demand, but autonomous Telegram actions only run via
-  tests/operations — deliberate until approval review matures.
-- **Gemini free tier is 20 generate-calls/day** (`gemini-3.8-flash`); embed
-  quota is separate. Heavy communities need billing. `npm run ai:live`
-  completes the live matrix after reset.
-- **Jev adapter is not live-tested** (no OpenRouter key/credit provided).
-- Neon pooler + direct URLs must both be configured (app vs migrations).
-- Approval DMs require the admin to have started the bot; no expiry sweeper
-  runs (expired approvals are rejected lazily on decision).
-
-## Routes
-
-- `/` landing · `/login` sign-in · `/dashboard/*` (protected, redirects to
-  `/login` when unauthenticated): overview, inbox, moderation, support,
-  knowledge, intelligence, approvals, activity, telegram, settings.
-- `POST /api/telegram/webhook` — secret-guarded Telegram ingress.
-- All dashboard pages render intentional, truthful empty states — no fake
-  metrics.
-
-## Architecture (target, Prompts 2+)
-
-```text
-Telegram → Bot API → Next.js ingest → deterministic checks → context/knowledge
-→ DecisionProvider (Jev, Gemini fallback) → structured decision
-→ PolicyEngine (AUTO / APPROVAL / HUMAN ONLY) → executor → Telegram API
-→ activity log → PostgreSQL. Admin DMs carry Approve/Reject callbacks.
-```
-
-Knowledge: trusted sources → chunk → embed → `pgvector` → retrieve → Gemini.
-The agent is the orchestration layer (`src/lib/*`); model providers are
-services behind an abstraction — never the authority.
-
-## Secrets
-
-Never committed. `.env.local` is gitignored; see `.env.example`. No API keys
-in client code. The Telegram bot token lives only in server env
-(`TELEGRAM_BOT_TOKEN`); the database stores bot usernames and numeric chat /
-user IDs, never the token.
+- **Single-operator trust model.** Any signed-in operator acts on all
+  communities; no roles or per-community membership. Demo credentials are
+  development-only.
+- **The runtime is not wired to the live webhook.** Ingestion persists and
+  the agent is proven on demand, but autonomous Telegram actions run via
+  tests/operations — deliberate until approval review matures further.
+- **Gemini free tier is 20 generate-calls/day**; heavier use needs billing.
+- **Jev is not live-tested** without an OpenRouter key/credit.
+- Approval DMs require the admin to have started the bot; expired approvals
+  resolve lazily on decision.

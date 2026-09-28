@@ -12,7 +12,7 @@ import type {
 } from "./types";
 
 // Server-side only. Never import from client components — the bot token must
-// never leave the server. The AI layer (Prompts 3+) may only use these
+// never leave the server. The agent layer may only use these
 // curated methods, never arbitrary Bot API calls.
 
 const API_BASE = "https://api.telegram.org";

@@ -15,7 +15,7 @@ import type { TelegramClient } from "../src/lib/telegram/client";
 import { normalizeUpdate } from "../src/lib/telegram/normalize";
 import { runPipeline } from "../src/lib/telegram/pipeline";
 
-// Automated tests for Prompt 2. No network calls to Telegram: the pipeline
+// Ingestion tests. No network calls to Telegram: the pipeline
 // runs with a stub client. DB assertions run against the real Neon database
 // and clean up everything they create (test ids use update_id 800000001+).
 

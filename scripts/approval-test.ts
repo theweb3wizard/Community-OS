@@ -19,7 +19,7 @@ import { runPipeline } from "../src/lib/telegram/pipeline";
 import type { TelegramClient } from "../src/lib/telegram/client";
 import type { NormalizedEvent } from "../src/lib/telegram/normalize";
 
-// Prompt 5 integration tests: policy verdicts, approval lifecycle over real
+// Policy + approval integration tests: policy verdicts, approval lifecycle over real
 // Telegram-shaped callback events, idempotency, auth, human-only, failure.
 // Telegram is stubbed; Neon is real. Full cleanup afterwards.
 

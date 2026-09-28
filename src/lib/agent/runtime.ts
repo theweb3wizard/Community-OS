@@ -57,7 +57,7 @@ export async function runAgentCycle(
   }
   const { cycleId } = context;
 
-  // The Prompt-2 pipeline owns commands, callbacks, and membership. The
+  // The ingestion pipeline owns commands, callbacks, and membership. The
   // runtime only reasons over conversation messages.
   if (event.kind !== "message" && event.kind !== "edited_message") {
     return { cycleId, status: "skipped", reason: `kind_${event.kind}` };

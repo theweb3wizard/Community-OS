@@ -111,7 +111,7 @@ export const messages = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Telegram ingestion plumbing (Prompt 2)
+// Telegram ingestion plumbing
 // ---------------------------------------------------------------------------
 
 /** Single-use pairing codes: `/connect CODE` in a group, `/admin CODE` in DM. */
@@ -224,7 +224,7 @@ export const policies = pgTable("policies", {
 });
 
 // ---------------------------------------------------------------------------
-// Trusted knowledge (retrieval lands in a later prompt; schema is ready now)
+// Trusted knowledge (chunked + embedded for pgvector retrieval)
 // ---------------------------------------------------------------------------
 
 export const knowledgeSources = pgTable("knowledge_sources", {
@@ -262,7 +262,7 @@ export const knowledgeChunks = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Per-community operator settings (Prompt 6)
+// Per-community operator settings
 // ---------------------------------------------------------------------------
 
 export const communitySettings = pgTable("community_settings", {

@@ -1,6 +1,6 @@
 import type { NormalizedEvent } from "@/lib/telegram/normalize";
 
-// Agent runtime vocabulary (Prompt 3). The agent is the orchestration layer:
+// Agent runtime vocabulary. The agent is the orchestration layer:
 // providers RECOMMEND (structured data), the policy engine AUTHORIZES, and
 // only registered tools can ACT. Model output never carries authority and
 // never supplies execution targets — targets always come from the event.

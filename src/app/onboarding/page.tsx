@@ -45,7 +45,7 @@ export default async function OnboardingPage() {
     {
       key: "account",
       title: "Create account & sign in",
-      body: "You are signed in. In production this is where operators create accounts.",
+      body: "You are signed in. Team invitations and roles can be managed here as the workspace grows.",
       done: true,
       href: "/dashboard",
       action: "Done",

@@ -16,7 +16,7 @@ import { drizzleStore } from "@/lib/agent/store";
 import type { NormalizedEvent } from "@/lib/telegram/normalize";
 import { TelegramClient } from "@/lib/telegram/client";
 
-// Approval lifecycle (Prompt 5). Safety properties:
+// Approval lifecycle. Safety properties:
 // - Callback payloads carry only an unguessable per-approval token
 //   (`ap:<token>` / `rj:<token>`, well within Telegram's 64-byte
 //   callback_data limit). Lookup is server-side; data is never trusted.

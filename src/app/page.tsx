@@ -11,7 +11,7 @@ export default function HomePage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-16">
       <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-        CommunityOS · Foundation (Prompt 1)
+        CommunityOS
       </p>
       <h1 className="mt-4 max-w-2xl text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
         Community operations, with humans in control.
@@ -19,9 +19,8 @@ export default function HomePage() {
       <p className="mt-4 max-w-2xl text-base text-zinc-600 dark:text-zinc-400">
         CommunityOS observes Telegram activity, interprets it with AI, and only
         acts within policy — consequential decisions stay with human operators.
-        This build establishes the application foundation: auth, dashboard
-        shell, database schema, and environment plumbing. The Telegram agent
-        and AI providers land in later prompts.
+        Connect a community, link an administrator, add trusted knowledge, and
+        let the agent handle the routine work while you approve the rest.
       </p>
       <div className="mt-8 flex flex-wrap gap-3">
         <Link
@@ -66,8 +65,7 @@ export default function HomePage() {
       </div>
 
       <p className="mt-12 text-xs text-zinc-400">
-        No demo metrics on this page. Operational data appears only after a
-        Telegram community is connected in a later prompt.
+        Operational data appears here once a Telegram community is connected.
       </p>
     </main>
   );

@@ -15,7 +15,7 @@ import {
   validateStructuredDecision,
 } from "../src/lib/ai/structured";
 
-// Offline automated tests for Prompt 4 (no API keys, no network except
+// Offline automated tests (no API keys, no network except
 // fetchUrlText validation which fails before any request). Live provider
 // tests run separately once GEMINI_API_KEY is available.
 
