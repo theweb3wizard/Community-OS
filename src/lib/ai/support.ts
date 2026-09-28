@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
+
 import { db } from "@/db";
-import { activityLogs, alerts, supportIssues } from "@/db/schema";
+import { activityLogs, alerts, communitySettings, supportIssues } from "@/db/schema";
 import { GeminiClient } from "./gemini";
 import { retrieveKnowledge, type RetrievedChunk } from "./knowledge";
 
@@ -56,7 +58,19 @@ export async function answerSupport(
   const q = question.trim().slice(0, 1000);
   if (!q) throw new Error("empty_question");
   const client = opts.client ?? GeminiClient.fromEnv();
-  const chunks = await retrieveKnowledge(communityId, q, 4, 0.35, client);
+  const settingsRows = await db
+    .select()
+    .from(communitySettings)
+    .where(eq(communitySettings.communityId, communityId))
+    .limit(1);
+  const settings = settingsRows[0];
+  const chunks = await retrieveKnowledge(
+    communityId,
+    q,
+    settings?.retrievalLimit ?? 4,
+    settings?.retrievalThreshold ?? 0.35,
+    client,
+  );
   const best = chunks[0]?.similarity ?? 0;
 
   if (best < MEDIUM_THRESHOLD || chunks.length === 0) {

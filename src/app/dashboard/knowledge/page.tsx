@@ -2,11 +2,14 @@ import { redirect } from "next/navigation";
 
 import { db } from "@/db";
 import { communities } from "@/db/schema";
+import { ConfirmButton } from "@/components/dashboard/confirm-button";
 import { Card, EmptyState, SectionHeader } from "@/components/ui/primitives";
 import { GeminiClient } from "@/lib/ai/gemini";
 import {
   createSource,
+  deleteSource,
   sourceChunkCounts,
+  sourceChunks,
   type KnowledgeKind,
 } from "@/lib/ai/knowledge";
 
@@ -37,6 +40,30 @@ async function addSource(formData: FormData) {
   }
 }
 
+async function removeSource(formData: FormData) {
+  "use server";
+  const id = String(formData.get("id") ?? "");
+  const communityId = String(formData.get("communityId") ?? "");
+  if (!id) redirect("/dashboard/knowledge?s=invalid");
+  await deleteSource(id);
+  redirect(`/dashboard/knowledge?community=${communityId}&s=deleted`);
+}
+
+async function ChunkList({ sourceId }: { sourceId: string }) {
+  const chunks = await sourceChunks(sourceId, 20);
+  if (chunks.length === 0) return <p className="mt-1">No chunks stored.</p>;
+  return (
+    <ul className="mt-1 flex flex-col gap-1">
+      {chunks.map((c, i) => (
+        <li key={c.id} className="rounded bg-zinc-50 p-2 dark:bg-zinc-900">
+          <span className="font-mono text-zinc-400">#{i + 1} · ~{c.tokenCount ?? "?"} tokens</span>
+          <p className="mt-0.5 whitespace-pre-wrap">{c.content.slice(0, 400)}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default async function KnowledgePage({
   searchParams,
 }: {
@@ -55,6 +82,7 @@ export default async function KnowledgePage({
   if (s.startsWith("ingested_")) banner = `Source ingested and embedded (${s.slice(9)} chunks).`;
   else if (s === "no_gemini") banner = "GEMINI_API_KEY is not configured on the server.";
   else if (s === "ingest_failed") banner = "Ingestion failed (URL unreachable, content too short, or embedding error).";
+  else if (s === "deleted") banner = "Source and its chunks deleted.";
   else if (s === "invalid") banner = "Invalid request.";
 
   return (
@@ -110,11 +138,27 @@ export default async function KnowledgePage({
                     key={src.id}
                     className="rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800"
                   >
-                    <span className="font-semibold">{src.title}</span>{" "}
-                    <span className="text-xs text-zinc-500">
-                      [{src.kind}] · {src.chunks} chunks
-                      {src.uri ? ` · ${src.uri.slice(0, 60)}` : ""}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">{src.title}</span>{" "}
+                      <span className="text-xs text-zinc-500">
+                        [{src.kind}] · {src.chunks} chunks
+                        {src.uri ? ` · ${src.uri.slice(0, 60)}` : ""}
+                      </span>
+                      <span className="ml-auto">
+                        <ConfirmButton
+                          action={removeSource}
+                          label="Delete"
+                          confirmLabel="Confirm delete"
+                          warning="Deletes source and all chunks."
+                          hidden={{ id: src.id, communityId: selectedId ?? "" }}
+                          className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-600 dark:border-red-900"
+                        />
+                      </span>
+                    </div>
+                    <details className="mt-2 text-xs text-zinc-500">
+                      <summary className="cursor-pointer underline">View chunks (retrieval units)</summary>
+                      <ChunkList sourceId={src.id} />
+                    </details>
                   </li>
                 ))}
               </ul>

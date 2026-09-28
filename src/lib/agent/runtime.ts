@@ -28,6 +28,14 @@ async function safeLog(
   }
 }
 
+/** Telegram message reference stored on every action row for traceability. */
+function msgRef(event: NormalizedEvent): { telegramMessageId: string | null; chatId: string } {
+  return {
+    telegramMessageId: event.messageId !== undefined ? String(event.messageId) : null,
+    chatId: event.chatId,
+  };
+}
+
 /** One full OBSERVE→…→LOG→ESCALATE pass for a normalized event. */
 export async function runAgentCycle(
   event: NormalizedEvent,
@@ -143,7 +151,7 @@ export async function runAgentCycle(
           communityId: context.community.id,
           tool: action.tool,
           status: "approval_pending",
-          detail: { cycleId, approvalId, classification: decision.classification, dmSent },
+          detail: { cycleId, approvalId, classification: decision.classification, dmSent, ...msgRef(event) },
         });
         results.push({ cycleId, tool: action.tool, status: "approval_pending", detail: { actionId: id, approvalId, dmSent, dmError } });
       } else {
@@ -162,6 +170,7 @@ export async function runAgentCycle(
           detail: {
             cycleId,
             classification: decision.classification,
+            ...msgRef(event),
             ...(outcome.detail ?? {}),
             ...(outcome.error ? { error: outcome.error } : {}),
           },
@@ -182,7 +191,7 @@ export async function runAgentCycle(
           communityId: context.community.id,
           tool: action.tool,
           status: "failed",
-          detail: { cycleId, error: message, classification: decision.classification },
+          detail: { cycleId, error: message, classification: decision.classification, ...msgRef(event) },
         });
         results.push({ cycleId, tool: action.tool, status: "failed", error: message, detail: { actionId: id } });
       } catch {

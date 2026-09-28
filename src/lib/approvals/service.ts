@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
-import { activityLogs, agentActions, approvals } from "@/db/schema";
+import { activityLogs, agentActions, approvals, communitySettings } from "@/db/schema";
 import type {
   ActionStatus,
   AgentContext,
@@ -71,6 +71,22 @@ function dashboardUrl(): string | null {
   return /^https?:\/\//.test(base) ? `${base}/dashboard/approvals` : null;
 }
 
+/** Operator notification preferences; everything defaults to on. */
+export async function notifyPreferences(
+  communityId: string,
+): Promise<{ approvals: boolean; failures: boolean }> {
+  const rows = await db
+    .select()
+    .from(communitySettings)
+    .where(eq(communitySettings.communityId, communityId))
+    .limit(1);
+  const s = rows[0];
+  return {
+    approvals: s?.notifyApprovals ?? true,
+    failures: s?.notifyFailures ?? true,
+  };
+}
+
 export async function requestApproval(
   input: ApprovalRequest,
   client?: TelegramClient,
@@ -109,7 +125,13 @@ export async function requestApproval(
 
   let dmSent = false;
   let dmError: string | undefined;
-  if (client) {
+  const prefs = await notifyPreferences(input.communityId).catch(() => ({
+    approvals: true,
+    failures: true,
+  }));
+  if (!prefs.approvals) {
+    dmError = "notifications_disabled";
+  } else if (client) {
     const adminRows = await db.execute(
       sql`select admin_telegram_user_id as "adminId" from telegram_connections where community_id = ${input.communityId} limit 1`,
     );
@@ -290,12 +312,17 @@ export async function decideApproval(
   }
 
   const tool = approval.kind as ToolName;
+  const tgRef = {
+    telegramMessageId:
+      typeof detail.messageId === "number" ? String(detail.messageId) : null,
+    chatId: typeof detail.chatId === "string" ? detail.chatId : null,
+  };
   if (input.choice === "reject") {
     await db.insert(agentActions).values({
       communityId: approval.communityId,
       kind: tool,
       status: "denied",
-      detail: { approvalId: approval.id, decidedBy: actorLabel, reason: "rejected_by_operator" },
+      detail: { approvalId: approval.id, decidedBy: actorLabel, reason: "rejected_by_operator", ...tgRef },
     });
     await db.insert(activityLogs).values({
       communityId: approval.communityId,
@@ -324,6 +351,7 @@ export async function decideApproval(
       detail: {
         approvalId: approval.id,
         decidedBy: actorLabel,
+        ...tgRef,
         ...(outcome.detail ?? {}),
         ...(outcome.error ? { error: outcome.error } : {}),
       },
@@ -365,7 +393,7 @@ export async function decideApproval(
       communityId: approval.communityId,
       kind: tool,
       status: "failed" as ActionStatus,
-      detail: { approvalId: approval.id, decidedBy: actorLabel, error: message },
+      detail: { approvalId: approval.id, decidedBy: actorLabel, error: message, ...tgRef },
     });
     await db.insert(activityLogs).values({
       communityId: approval.communityId,
@@ -385,6 +413,8 @@ async function notifyAdmin(
 ): Promise<void> {
   if (!client) return;
   try {
+    const prefs = await notifyPreferences(communityId);
+    if (!prefs.failures) return;
     const adminId = await adminIdFor(communityId);
     if (adminId) await client.sendMessage(Number(adminId), text);
   } catch {

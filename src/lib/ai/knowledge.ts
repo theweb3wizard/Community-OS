@@ -164,6 +164,23 @@ export async function retrieveKnowledge(
   return rows;
 }
 
+export async function sourceChunks(
+  sourceId: string,
+  limit = 20,
+): Promise<Array<{ id: string; content: string; tokenCount: number | null }>> {
+  const rows = await db
+    .select({ id: knowledgeChunks.id, content: knowledgeChunks.content, tokenCount: knowledgeChunks.tokenCount })
+    .from(knowledgeChunks)
+    .where(eq(knowledgeChunks.sourceId, sourceId))
+    .limit(limit);
+  return rows;
+}
+
+export async function deleteSource(sourceId: string): Promise<void> {
+  await db.delete(knowledgeChunks).where(eq(knowledgeChunks.sourceId, sourceId));
+  await db.delete(knowledgeSources).where(eq(knowledgeSources.id, sourceId));
+}
+
 export async function sourceChunkCounts(
   communityId: string,
 ): Promise<Array<{ id: string; kind: string; title: string; uri: string | null; chunks: number }>> {

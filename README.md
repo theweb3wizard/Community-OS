@@ -214,6 +214,41 @@ approval queue + DM, callback approve/reject, unauthorized rejection,
 duplicate-callback idempotency, human-only escalation, strict mode,
 execution failure honesty, forged-token safety, cleanup).
 
+## Operator dashboard (Prompt 6: real state only)
+
+Every number and row comes from `src/lib/dashboard/queries.ts` — no fake
+metrics anywhere. Per-community picker on each page; truthful empty states
+when there is no data.
+
+- **Overview** — live counts (messages, members, moderation actions, open/
+  resolved support, pending approvals, open alerts) + recent activity.
+- **Inbox** — urgent / needs review / support / community issue / resolved
+  buckets assembled from alerts, approvals, support issues, and agent
+  actions, each linking to its context.
+- **Message trace** (`/dashboard/messages/[id]`) — one Telegram event
+  followed through message → sender → agent actions → approvals.
+- **Moderation** — every delete/restrict/warn with classification, evidence,
+  outcome, and links to the trace and approval.
+- **Support** — issue triage (open/resolved/closed) plus the answer and
+  escalation log with confidence and similarities.
+- **Knowledge** — sources with chunk counts, chunk inspection (retrieval
+  units), ingest, and two-step delete.
+- **Intelligence** — observed data (velocity, terms, repeat clusters,
+  breakdowns) kept visibly separate from the labeled AI summary, which is
+  generated on demand and stored in the activity timeline.
+- **Approvals** — pending queue with evidence + decided history.
+- **Activity** — event/actor/text search and filter over the timeline.
+- **Settings** — community rename, policy CRUD (mode, auto-delete, flood/
+  repeat thresholds, blocked/allowlisted domains, per-tool approval),
+  admin link/unlink, retrieval tuning, DM notification preferences.
+- **Onboarding** (`/onboarding`) — 7-step wizard (account → community →
+  Telegram → admin → policies → knowledge → automation) computed from real
+  state; nothing mandatory.
+
+Tests: `npm run onboarding:test` (fresh-community full flow + trace check).
+`community_settings` table holds retrieval/notification preferences honored
+by the support and approval flows.
+
 ## Routes
 
 - `/` landing · `/login` sign-in · `/dashboard/*` (protected, redirects to

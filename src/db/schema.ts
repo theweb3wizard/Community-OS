@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  real,
   text,
   timestamp,
   unique,
@@ -259,6 +260,23 @@ export const knowledgeChunks = pgTable(
     ),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Per-community operator settings (Prompt 6)
+// ---------------------------------------------------------------------------
+
+export const communitySettings = pgTable("community_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  communityId: uuid("community_id")
+    .references(() => communities.id)
+    .notNull()
+    .unique(),
+  retrievalThreshold: real("retrieval_threshold").notNull().default(0.35),
+  retrievalLimit: integer("retrieval_limit").notNull().default(4),
+  notifyApprovals: boolean("notify_approvals").notNull().default(true),
+  notifyFailures: boolean("notify_failures").notNull().default(true),
+  ...timestamps,
+});
 
 // ---------------------------------------------------------------------------
 // Append-only activity log
