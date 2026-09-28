@@ -143,6 +143,46 @@ Test: `npm run agent:test` (38 checks: real-message replay, all five
 classifications, admin immunity, rogue/malformed decisions, Telegram failure,
 DB failure, unknown community, control-command skip, tool safety, cleanup).
 
+## AI layer (Prompt 4: decisions + trusted knowledge)
+
+`src/lib/ai/` — providers recommend, policy still authorizes, tools still act.
+
+- `gemini.ts` — `@google/genai` wrapper (`generateStructured` via
+  `responseJsonSchema` + `responseMimeType: application/json`,
+  `generateText`, `embed` at 1536 dims). Transient 429/503 retried; daily
+  quota exhaustion is never retried. Default model `gemini-3.8-flash`
+  (env-overridable; older `2.x` models are retired server-side),
+  embeddings `gemini-embedding-001` truncated to 1536 (a recommended size —
+  no schema migration needed).
+- `structured.ts` — validated decision shape (category, confidence, urgency,
+  spam/scam probabilities, support intent, rule violation, recommended
+  action, reasoning summary, requiresHuman, knowledgeRequired). Raw model
+  text can never invoke tools.
+- `jev.ts` + `providers.ts` — `JevDecisionProvider` (TypeSafe System One via
+  OpenRouter Decisions API: choice + noul + score questions, exact published
+  shapes), `GeminiDecisionProvider`, `FallbackDecisionProvider`
+  (Jev → Gemini, records `usedProvider`, safe error when all fail),
+  `semanticGate` (models only see messages where interpretation matters —
+  never service/control/bot/trivial texts). Jev is optional: no key means
+  the adapter stays isolated and reports not-live-tested.
+- `knowledge.ts` — trusted sources (text/faq/url/doc/announcement/policy) →
+  paragraph-aware chunking → Gemini embeddings → pgvector → cosine
+  retrieval with source attribution. URL fetching is basic server-side text
+  extraction (documented limitation).
+- `support.ts` — question → retrieval → grounded generation → confidence
+  gate: HIGH (≥0.6) answers from knowledge, MEDIUM answers cautiously +
+  ticket, LOW creates ticket + alert with a safe non-answer (no generation,
+  no invention). Thresholds calibrated on live similarity observations.
+- `intelligence.ts` — deterministic signals (velocity, top/recent terms,
+  repeat clusters, support/moderation/alert breakdowns) + optional Gemini
+  summary (safe-fails to null). Signals, not measurements.
+
+Tests: `npm run ai:test` (33 offline checks) and `npm run ai:live`
+(requires `GEMINI_API_KEY`; structured, provider, embeddings, ingest,
+retrieval, grounded/ungrounded support, Jev-failure fallback, total
+failure, summary — with full cleanup). Dashboard → Knowledge manages
+sources (list + ingest with chunk counts).
+
 ## Routes
 
 - `/` landing · `/login` sign-in · `/dashboard/*` (protected, redirects to
