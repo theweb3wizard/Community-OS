@@ -183,6 +183,37 @@ retrieval, grounded/ungrounded support, Jev-failure fallback, total
 failure, summary — with full cleanup). Dashboard → Knowledge manages
 sources (list + ingest with chunk counts).
 
+## Policy + approvals (Prompt 5: what the agent may do)
+
+AI proposes, policy authorizes, tools execute — the model never decides its
+own permissions.
+
+- `src/lib/agent/policy.ts` — deterministic v1 engine. Verdicts:
+  `AUTO_EXECUTE` (corroborated high-confidence spam/phishing deletion,
+  alerts, escalations), `NEEDS_APPROVAL` (restrictions, warnings, replies,
+  ambiguous deletions), `ESCALATE` (human-only topics like contract/treasury/
+  governance/financial claims, model-flagged sensitivity), `IGNORE`
+  (admin senders, normal text proposing mutations). Risk scored per action.
+  Community overrides via `policies.rules`: `mode: strict`, per-tool
+  `requireApproval`, extra `humanOnlyPatterns`, `autoDeleteSpam` toggle.
+- `src/lib/approvals/service.ts` — approval lifecycle: unguessable
+  per-approval callback tokens (`ap:`/`rj:`, inside Telegram's 64-byte
+  limit), admin-identity check against the linked Telegram ID, expiry,
+  **atomic single-statement claim** (`UPDATE … WHERE status='pending' …
+  RETURNING` — execute-at-most-once without relying on transactions, which
+  neon-http doesn't offer), execution from server-recorded snapshots,
+  honest `failed` states with admin failure notices, security-event logging
+  for unauthorized attempts. Shared by the Telegram callback path
+  (`pipeline.ts`) and the dashboard (`/dashboard/approvals` list + Approve/
+  Reject with evidence).
+- Approval DMs carry Approve/Reject buttons plus an Open Dashboard link;
+  decisions edit the DM in place and always answer the callback query.
+
+Tests: `npm run approvals:test` (38 checks on live Neon: auto execution,
+approval queue + DM, callback approve/reject, unauthorized rejection,
+duplicate-callback idempotency, human-only escalation, strict mode,
+execution failure honesty, forged-token safety, cleanup).
+
 ## Routes
 
 - `/` landing · `/login` sign-in · `/dashboard/*` (protected, redirects to

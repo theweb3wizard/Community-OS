@@ -74,6 +74,16 @@ function stubClient(calls: Call[], fail?: { method: string; error: string }): Te
       return true;
     },
     answerCallbackQuery: async () => true,
+    sendAdminNotification: async (adminId: unknown, title: unknown, body: unknown, buttons: unknown, urlButtons: unknown) => {
+      calls.push({ method: "sendAdminNotification", adminId, title, body, buttons, urlButtons });
+      maybeFail("sendAdminNotification");
+      return { message_id: 993, date: 1, chat: { id: 1, type: "private" } };
+    },
+    editMessage: async (chatId: unknown, messageId: unknown, text: unknown) => {
+      calls.push({ method: "editMessage", chatId, messageId, text });
+      maybeFail("editMessage");
+      return { message_id: 994, date: 1, chat: { id: 1, type: "private" } };
+    },
   };
   return stub as unknown as TelegramClient;
 }
@@ -269,7 +279,7 @@ async function main() {
         msgEvent({ updateId: 900006, messageId: tgId, senderId: REAL_ADMIN_TG, text: "pinned links [spam-test] http://evil.example/x" }),
         { client: stubClient(calls) },
       ));
-      check("admin delete denied", r.results?.[0]?.status === "denied" && !calls.some((c) => c.method === "deleteMessage"), { r: r.results, calls });
+      check("admin delete refused", r.results?.[0]?.status === "skipped" && !calls.some((c) => c.method === "deleteMessage"), { r: r.results, calls });
     }
 
     // 7. Rogue tool rejected, nothing executed

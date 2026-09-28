@@ -28,6 +28,7 @@ const DecisionSchema = z.object({
   confidence: z.number().min(0).max(1),
   rationale: z.string().min(1).max(2000),
   proposedActions: z.array(ProposedActionSchema).max(5),
+  requiresHuman: z.boolean().optional(),
 });
 
 export type DecisionValidation =
@@ -48,6 +49,7 @@ export function validateDecision(input: unknown): DecisionValidation {
         args: a.args as Record<string, unknown>,
         rationale: a.rationale,
       })),
+      requiresHuman: parsed.data.requiresHuman,
     },
   };
 }

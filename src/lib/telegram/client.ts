@@ -1,4 +1,5 @@
 import type {
+  InlineKeyboardButton,
   InlineKeyboardMarkup,
   TelegramApiEnvelope,
   TelegramChat,
@@ -242,16 +243,15 @@ export class TelegramClient {
     title: string,
     body: string,
     buttons: { label: string; data: string }[] = [],
+    urlButtons: { label: string; url: string }[] = [],
   ): Promise<TelegramMessage> {
     const text = `${title}\n\n${body}`;
+    const rows: InlineKeyboardButton[][] = buttons.map((b) => [
+      { text: b.label, callback_data: b.data },
+    ]);
+    for (const u of urlButtons) rows.push([{ text: u.label, url: u.url }]);
     const replyMarkup: InlineKeyboardMarkup | undefined =
-      buttons.length > 0
-        ? {
-            inline_keyboard: buttons.map((b) => [
-              { text: b.label, callback_data: b.data },
-            ]),
-          }
-        : undefined;
+      rows.length > 0 ? { inline_keyboard: rows } : undefined;
     return this.sendMessage(adminTelegramUserId, text, { replyMarkup });
   }
 

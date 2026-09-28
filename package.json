@@ -17,7 +17,8 @@
     "telegram:test": "tsx scripts/telegram-local-test.ts",
     "agent:test": "tsx scripts/agent-local-test.ts",
     "ai:test": "tsx scripts/ai-local-test.ts",
-    "ai:live": "tsx scripts/ai-live-test.ts"
+    "ai:live": "tsx scripts/ai-live-test.ts",
+    "approvals:test": "tsx scripts/approval-test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

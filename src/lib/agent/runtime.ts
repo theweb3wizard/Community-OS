@@ -99,39 +99,53 @@ export async function runAgentCycle(
     const action = decision.proposedActions[i];
     const verdict = policy[i].verdict;
     try {
-      if (verdict === "DENY") {
+      if (verdict === "IGNORE") {
         const id = await store.recordAction({
           communityId: context.community.id,
           tool: action.tool,
-          status: "denied",
+          status: "skipped",
           detail: { cycleId, reason: policy[i].reason, classification: decision.classification },
         });
-        results.push({ cycleId, tool: action.tool, status: "denied", detail: { actionId: id, reason: policy[i].reason } });
-      } else if (verdict === "NEEDS_APPROVAL") {
-        const approvalId = await store.recordApproval({
+        results.push({ cycleId, tool: action.tool, status: "skipped", detail: { actionId: id, reason: policy[i].reason } });
+      } else if (verdict === "ESCALATE") {
+        // Human-only territory: raise a visible escalation, never the tool.
+        const alertId = await store.recordAlert({
           communityId: context.community.id,
-          kind: action.tool,
-          title: `${decision.classification} → ${action.tool}`,
-          detail: {
-            cycleId,
-            classification: decision.classification,
-            confidence: decision.confidence,
-            rationale: decision.rationale,
-            tool: action.tool,
-            args: action.args,
-            policyReason: policy[i].reason,
-            chatId: event.chatId,
-            messageId: event.messageId ?? null,
-            senderId: event.sender?.id ?? null,
-          },
+          severity: policy[i].risk === "high" ? "high" : "normal",
+          title: `Human review required: ${decision.classification}`,
+          body: `${policy[i].reason}. Proposed: ${action.tool}. ${decision.rationale}`.slice(0, 1000),
         });
+        const id = await store.recordAction({
+          communityId: context.community.id,
+          tool: "escalate",
+          status: "executed",
+          detail: { cycleId, escalatedFrom: action.tool, alertId, classification: decision.classification },
+        });
+        results.push({ cycleId, tool: "escalate", status: "executed", detail: { actionId: id, alertId, escalatedFrom: action.tool } });
+      } else if (verdict === "NEEDS_APPROVAL") {
+        const { requestApproval } = await import("@/lib/approvals/service");
+        const { approvalId, dmSent, dmError } = await requestApproval(
+          {
+            communityId: context.community.id,
+            communityName: context.community.name,
+            cycleId,
+            decision,
+            action,
+            policyReason: policy[i].reason,
+            risk: policy[i].risk,
+            chat: { id: event.chatId, title: event.chatTitle, type: event.chatType },
+            message: { id: event.messageId, text: context.message?.text ?? event.text },
+            member: { telegramId: event.sender?.id, username: event.sender?.username },
+          },
+          opts.client,
+        );
         const id = await store.recordAction({
           communityId: context.community.id,
           tool: action.tool,
           status: "approval_pending",
-          detail: { cycleId, approvalId, classification: decision.classification },
+          detail: { cycleId, approvalId, classification: decision.classification, dmSent },
         });
-        results.push({ cycleId, tool: action.tool, status: "approval_pending", detail: { actionId: id, approvalId } });
+        results.push({ cycleId, tool: action.tool, status: "approval_pending", detail: { actionId: id, approvalId, dmSent, dmError } });
       } else {
         const outcome = await executeTool(action.tool, {
           cycleId,

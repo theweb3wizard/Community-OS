@@ -229,6 +229,42 @@ export function resetBotIdCache(): void {
   cachedBotId = null;
 }
 
+function approvalNote(
+  outcome: string,
+  tool?: string,
+  error?: string,
+): string {
+  switch (outcome) {
+    case "approved_executed":
+      return `Approved — ${tool ?? "action"} executed.`;
+    case "approved_failed":
+      return `Approved, but execution failed: ${(error ?? "unknown").slice(0, 120)}`;
+    case "rejected":
+      return "Rejected — no action taken.";
+    case "already_decided":
+      return "Already decided — nothing changed.";
+    case "unauthorized":
+      return "Not authorized: only the linked administrator can decide.";
+    case "expired":
+      return "This approval has expired.";
+    default:
+      return "Approval not found.";
+  }
+}
+
+function approvalEditText(outcome: string, tool?: string, error?: string): string {
+  switch (outcome) {
+    case "approved_executed":
+      return `✅ Approved — ${tool ?? "action"} executed.`;
+    case "approved_failed":
+      return `⚠️ Approved, but execution FAILED: ${(error ?? "unknown").slice(0, 200)} Nothing was applied; see the dashboard.`;
+    case "rejected":
+      return "❌ Rejected — no action was taken.";
+    default:
+      return `Approval update: ${outcome}.`;
+  }
+}
+
 function parseCommand(text: string): { command: string; arg: string } | null {
   const trimmed = text.trim();
   if (!trimmed.startsWith("/")) return null;
@@ -260,19 +296,56 @@ export async function runPipeline(
     return { status: "duplicate", detail: `update ${event.updateId} already seen` };
   }
 
-  // 2. Callback queries: always acknowledge (clients show a spinner until
-  // answerCallbackQuery). Approval/rejection execution belongs to Prompt 3+.
+  // 2. Callback queries: approval decisions go through the approval service
+  // (token lookup + admin authentication + atomic claim + execute-once).
+  // Everything is answered so client spinners never hang.
   if (event.kind === "callback_query") {
+    const match = event.callbackData?.match(/^(ap|rj):([A-Za-z0-9_-]{8,64})$/);
+    if (match && event.sender && client && event.callbackId) {
+      const { decideApproval } = await import("@/lib/approvals/service");
+      try {
+        const result = await decideApproval({
+          byToken: match[2],
+          choice: match[1] === "ap" ? "approve" : "reject",
+          actor: { kind: "telegram", telegramUserId: event.sender.id },
+          client,
+        });
+        const note = approvalNote(result.outcome, result.tool, result.error);
+        await client.answerCallbackQuery(event.callbackId, { text: note, showAlert: result.outcome === "unauthorized" });
+        // Update the approval DM in place when we can.
+        if (
+          event.messageId !== undefined &&
+          (result.outcome === "approved_executed" ||
+            result.outcome === "approved_failed" ||
+            result.outcome === "rejected")
+        ) {
+          try {
+            await client.editMessage(
+              Number(event.chatId),
+              event.messageId,
+              approvalEditText(result.outcome, result.tool, result.error),
+            );
+          } catch {
+            // DM edit is cosmetic; the decision is already persisted.
+          }
+        }
+        return { status: "processed", detail: `approval_${result.outcome}` };
+      } catch (error) {
+        await logActivity(null, "telegram.approval_callback_failed", {
+          updateId: event.updateId,
+          error: error instanceof Error ? error.message : "unknown",
+        });
+        try {
+          await client.answerCallbackQuery(event.callbackId, { text: "Something went wrong; the approval was not changed." });
+        } catch {
+          // ignore
+        }
+        return { status: "processed", detail: "approval_callback_error" };
+      }
+    }
     if (client && event.callbackId) {
       try {
-        const approvalLike =
-          event.callbackData?.startsWith("approve:") ||
-          event.callbackData?.startsWith("reject:");
-        await client.answerCallbackQuery(event.callbackId, {
-          text: approvalLike
-            ? "Approval actions arrive in the next CommunityOS release."
-            : undefined,
-        });
+        await client.answerCallbackQuery(event.callbackId);
       } catch (error) {
         await logActivity(null, "telegram.callback_answer_failed", {
           updateId: event.updateId,

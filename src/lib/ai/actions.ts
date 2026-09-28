@@ -45,5 +45,6 @@ export function toAgentDecision(d: StructuredDecision, provider: string): AgentD
     confidence: d.confidence,
     rationale: `[${provider}] ${d.reasoningSummary}`,
     proposedActions: decisionToActions(d),
+    requiresHuman: d.requiresHuman,
   };
 }

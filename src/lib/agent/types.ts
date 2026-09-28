@@ -39,14 +39,20 @@ export interface AgentDecision {
   confidence: number;
   rationale: string;
   proposedActions: ProposedAction[];
+  /** Model-flagged sensitivity (Gemini structured path sets this). */
+  requiresHuman?: boolean;
 }
 
-export type PolicyVerdict = "ALLOW" | "NEEDS_APPROVAL" | "DENY";
+export type PolicyVerdict = "AUTO_EXECUTE" | "NEEDS_APPROVAL" | "ESCALATE" | "IGNORE";
+
+export type RiskLevel = "low" | "medium" | "high";
 
 export interface PolicyDecision {
   tool: ToolName;
   verdict: PolicyVerdict;
   reason: string;
+  risk: RiskLevel;
+  riskFactors: string[];
 }
 
 export type ActionStatus =
