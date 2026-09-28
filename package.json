@@ -14,7 +14,8 @@
     "telegram:info": "tsx scripts/telegram.ts info",
     "telegram:webhook:set": "tsx scripts/telegram.ts set-webhook",
     "telegram:webhook:delete": "tsx scripts/telegram.ts delete-webhook",
-    "telegram:test": "tsx scripts/telegram-local-test.ts"
+    "telegram:test": "tsx scripts/telegram-local-test.ts",
+    "agent:test": "tsx scripts/agent-local-test.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

@@ -106,6 +106,43 @@ Pipeline stages (`src/lib/telegram/pipeline.ts`): receive → normalize →
 resolve community → resolve member → persist → process (commands/membership).
 Approval/rejection callback *execution* is intentionally deferred to Prompt 3.
 
+## Agent runtime (Prompt 3: orchestration, no model yet)
+
+`src/lib/agent/` implements the control loop:
+
+```text
+event → loadContext → provider.decide → validate → policy.evaluate
+      → execute | queue approval | deny → persist all → log
+```
+
+- `types.ts` — `AgentContext`, `AgentDecision`, `ProposedAction`,
+  `PolicyDecision` (ALLOW/NEEDS_APPROVAL/DENY), `ActionResult`, `CycleResult`.
+  Model output never carries authority and never supplies execution targets:
+  chat/message/user IDs are always re-derived from the triggering event.
+- `context.ts` + `prechecks.ts` — bounded context (community, member,
+  message, ≤10 recent messages truncated to 300 chars, active policies) plus
+  pure deterministic signals (blocked/allowlisted domains, repeats, flooding,
+  admin role, control commands). Policies come from the `policies` table.
+- `provider.ts` — `DecisionProvider` interface + `DeterministicTestProvider`
+  (explicit `[spam-test]`/`[phish-test]`/`[support-test]`/`[escalate-test]`
+  markers; test-only). Output is zod-validated; unknown tools are rejected
+  before policy stage.
+- `policy.ts` — conservative v0: only corroborated high-confidence
+  SPAM/PHISHING deletions auto-execute (never for admins); restrict/warn/reply
+  always need human approval; alert/escalate always allowed (observability).
+- `tools.ts` — exactly 6 registered tools; the registry itself throws
+  `ToolNotRegisteredError` on anything else (defense in depth).
+- `store.ts` / `runtime.ts` — persistence boundary (idempotent single writes;
+  neon-http has no interactive transactions, so no multi-statement atomicity
+  is assumed) and the cycle orchestrator with per-stage failure containment.
+- Results persist to `agent_actions` (+ `alerts`, `approvals`, `activity_logs`
+  with correlating `cycleId`). Not yet wired to the live webhook — the runtime
+  runs on demand/tests until policy review UI lands.
+
+Test: `npm run agent:test` (38 checks: real-message replay, all five
+classifications, admin immunity, rogue/malformed decisions, Telegram failure,
+DB failure, unknown community, control-command skip, tool safety, cleanup).
+
 ## Routes
 
 - `/` landing · `/login` sign-in · `/dashboard/*` (protected, redirects to
