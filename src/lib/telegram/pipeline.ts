@@ -160,10 +160,13 @@ async function consumeLinkCode(
   code: string,
   purpose: string,
 ): Promise<{ id: string; communityId: string } | null> {
+  // Atomic single-statement claim (same reasoning as approval claims:
+  // neon-http offers no interactive transactions). Concurrent redemptions
+  // of one code collapse to a single winner; losers see no row.
   const now = new Date();
-  const rows = await db
-    .select()
-    .from(communityLinkCodes)
+  const claimed = await db
+    .update(communityLinkCodes)
+    .set({ usedAt: now })
     .where(
       and(
         eq(communityLinkCodes.code, code),
@@ -172,14 +175,8 @@ async function consumeLinkCode(
         gt(communityLinkCodes.expiresAt, now),
       ),
     )
-    .limit(1);
-  const found = rows[0];
-  if (!found) return null;
-  await db
-    .update(communityLinkCodes)
-    .set({ usedAt: now })
-    .where(eq(communityLinkCodes.id, found.id));
-  return { id: found.id, communityId: found.communityId };
+    .returning({ id: communityLinkCodes.id, communityId: communityLinkCodes.communityId });
+  return claimed[0] ?? null;
 }
 
 async function bindCommunityChat(opts: {

@@ -5,10 +5,12 @@ import { db } from "@/db";
 import { activityLogs, supportIssues } from "@/db/schema";
 import { CommunityPicker } from "@/components/dashboard/community-picker";
 import { Card, EmptyState, SectionHeader } from "@/components/ui/primitives";
+import { requireOperator } from "@/lib/authz";
 import { resolveCommunity } from "@/lib/dashboard/community";
 
 async function setStatus(formData: FormData) {
   "use server";
+  await requireOperator();
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
   if (!id || !["open", "resolved", "closed"].includes(status)) {

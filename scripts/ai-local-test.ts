@@ -1,5 +1,11 @@
 import "../src/db/load-env";
 
+import { and, eq, sql } from "drizzle-orm";
+
+import { db } from "../src/db";
+import { activityLogs } from "../src/db/schema";
+import { runAgentCycle } from "../src/lib/agent/runtime";
+
 import type { AgentContext } from "../src/lib/agent/types";
 import { decisionToActions } from "../src/lib/ai/actions";
 import { mapJevAnswers } from "../src/lib/ai/jev";
@@ -154,6 +160,48 @@ async function main() {
     schemeErr = e instanceof Error ? e.message : "";
   }
   check("bad scheme rejected", schemeErr.includes("unsupported url scheme"), schemeErr);
+  let ssrfErr = "";
+  try {
+    await fetchUrlText("http://169.254.169.254/latest/meta-data/");
+  } catch (e) {
+    ssrfErr = e instanceof Error ? e.message : "";
+  }
+  check("ssrf link-local blocked", ssrfErr.includes("non-public"), ssrfErr);
+  let portErr = "";
+  try {
+    await fetchUrlText("https://example.com:8443/x");
+  } catch (e) {
+    portErr = e instanceof Error ? e.message : "";
+  }
+  check("nonstandard port blocked", portErr.includes("only default"), portErr);
+
+  // runtime gate: trivial text never reaches a provider (Scenario A)
+  let decideCalls = 0;
+  const countingProvider = {
+    name: "counter",
+    decide: async () => {
+      decideCalls++;
+      return { classification: "NORMAL", confidence: 1, rationale: "x", proposedActions: [] };
+    },
+  };
+  const gateEvent = {
+    ...baseContext.event,
+    updateId: 424242,
+    chatId: "-1003320389084",
+    text: "ok",
+  };
+  const gateResult = await runAgentCycle(
+    gateEvent as never,
+    { provider: countingProvider as never },
+  );
+  check(
+    "gate skips provider",
+    gateResult.status === "completed" && decideCalls === 0 && gateResult.decision?.classification === "NORMAL",
+    { status: gateResult.status, decideCalls },
+  );
+  await db
+    .delete(activityLogs)
+    .where(and(eq(activityLogs.event, "agent.cycle_completed"), sql`detail->>'cycleId' = ${gateResult.cycleId}`));
 
   console.log(`\nTOTAL passed=${passed} failed=${failed}`);
   process.exit(failed > 0 ? 1 : 0);

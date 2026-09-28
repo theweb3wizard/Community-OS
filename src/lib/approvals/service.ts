@@ -132,10 +132,7 @@ export async function requestApproval(
   if (!prefs.approvals) {
     dmError = "notifications_disabled";
   } else if (client) {
-    const adminRows = await db.execute(
-      sql`select admin_telegram_user_id as "adminId" from telegram_connections where community_id = ${input.communityId} limit 1`,
-    );
-    const adminId = (adminRows.rows[0] as { adminId?: string } | undefined)?.adminId;
+    const adminId = await adminIdFor(input.communityId);
     if (adminId) {
       const dashUrl = dashboardUrl();
       try {

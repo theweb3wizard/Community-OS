@@ -71,6 +71,26 @@ export async function runAgentCycle(
     return { cycleId, status: "skipped", reason: "control_command" };
   }
 
+  // Intelligent routing: only messages where semantic interpretation can
+  // change the outcome reach a (potentially expensive) model. Everything
+  // else completes as NORMAL with zero provider cost.
+  const { semanticGate } = await import("@/lib/ai/providers");
+  const gate = semanticGate(context);
+  if (!gate.needed) {
+    const decision = {
+      classification: "NORMAL" as const,
+      confidence: 1,
+      rationale: `deterministic gate: ${gate.reason}`,
+      proposedActions: [],
+    };
+    await safeLog(store, {
+      communityId: context.community.id,
+      event: "agent.cycle_completed",
+      detail: { cycleId, classification: "NORMAL", confidence: 1, actions: [], gated: gate.reason },
+    });
+    return { cycleId, status: "completed", decision, policy: [], results: [] };
+  }
+
   // Decision (untrusted output — validated before use).
   let raw: unknown;
   try {

@@ -10,6 +10,7 @@ import {
 } from "@/db/schema";
 import { CommunityPicker } from "@/components/dashboard/community-picker";
 import { ConfirmButton } from "@/components/dashboard/confirm-button";
+import { requireOperator } from "@/lib/authz";
 import { Card, SectionHeader } from "@/components/ui/primitives";
 import { resolveCommunity } from "@/lib/dashboard/community";
 
@@ -17,6 +18,7 @@ const POLICY_TOOLS = ["delete_message", "restrict_user", "warn_user", "send_repl
 
 async function renameCommunity(formData: FormData) {
   "use server";
+  await requireOperator();
   const communityId = String(formData.get("communityId") ?? "");
   const name = String(formData.get("name") ?? "").trim().slice(0, 80);
   if (!communityId || !name) redirect("/dashboard/settings?s=invalid");
@@ -26,6 +28,7 @@ async function renameCommunity(formData: FormData) {
 
 async function createPolicy(formData: FormData) {
   "use server";
+  await requireOperator();
   const communityId = String(formData.get("communityId") ?? "");
   const name = String(formData.get("name") ?? "").trim().slice(0, 80) || "Default policy";
   const mode = String(formData.get("mode") ?? "standard");
@@ -61,6 +64,7 @@ async function createPolicy(formData: FormData) {
 
 async function togglePolicy(formData: FormData) {
   "use server";
+  await requireOperator();
   const id = String(formData.get("id") ?? "");
   const communityId = String(formData.get("communityId") ?? "");
   const rows = await db.select().from(policies).where(eq(policies.id, id)).limit(1);
@@ -74,6 +78,7 @@ async function togglePolicy(formData: FormData) {
 
 async function deletePolicy(formData: FormData) {
   "use server";
+  await requireOperator();
   const id = String(formData.get("id") ?? "");
   const communityId = String(formData.get("communityId") ?? "");
   await db.delete(policies).where(and(eq(policies.id, id), eq(policies.communityId, communityId)));
@@ -82,6 +87,7 @@ async function deletePolicy(formData: FormData) {
 
 async function unlinkAdmin(formData: FormData) {
   "use server";
+  await requireOperator();
   const id = String(formData.get("id") ?? "");
   const communityId = String(formData.get("communityId") ?? "");
   await db
@@ -93,6 +99,7 @@ async function unlinkAdmin(formData: FormData) {
 
 async function saveCommunitySettings(formData: FormData) {
   "use server";
+  await requireOperator();
   const communityId = String(formData.get("communityId") ?? "");
   if (!communityId) redirect("/dashboard/settings?s=invalid");
   const threshold = Math.min(0.95, Math.max(0, Number(formData.get("retrievalThreshold") ?? 0.35) || 0.35));

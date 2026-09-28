@@ -9,6 +9,7 @@ import {
   telegramConnections,
 } from "@/db/schema";
 import { Card, SectionHeader } from "@/components/ui/primitives";
+import { requireOperator } from "@/lib/authz";
 import { TelegramClient } from "@/lib/telegram/client";
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -39,6 +40,7 @@ async function uniqueCommunitySlug(base: string): Promise<string> {
 
 async function createCommunity(formData: FormData) {
   "use server";
+  await requireOperator();
   const name = String(formData.get("name") ?? "").trim().slice(0, 80);
   if (!name) redirect("/dashboard/telegram?s=name_required");
   const slug = await uniqueCommunitySlug(name);
@@ -48,6 +50,7 @@ async function createCommunity(formData: FormData) {
 
 async function createCode(formData: FormData) {
   "use server";
+  await requireOperator();
   const communityId = String(formData.get("communityId") ?? "");
   const purpose = String(formData.get("purpose") ?? "");
   if (!communityId || (purpose !== "connect" && purpose !== "admin")) {
@@ -71,6 +74,7 @@ async function createCode(formData: FormData) {
 
 async function verifyConnection(formData: FormData) {
   "use server";
+  await requireOperator();
   const connectionId = String(formData.get("connectionId") ?? "");
   const rows = await db
     .select()
@@ -120,6 +124,7 @@ async function verifyConnection(formData: FormData) {
 
 async function sendTestDM(formData: FormData) {
   "use server";
+  await requireOperator();
   const connectionId = String(formData.get("connectionId") ?? "");
   const rows = await db
     .select()

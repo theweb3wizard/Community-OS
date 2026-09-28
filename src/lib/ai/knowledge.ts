@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import { cosineDistance, desc, gt, sql } from "drizzle-orm";
 import { and, eq } from "drizzle-orm";
 
@@ -64,7 +65,33 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-export async function fetchUrlText(url: string): Promise<{ title: string; text: string }> {
+function isBlockedIp(ip: string): boolean {
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  if (v4) {
+    const [, a, b] = v4.map(Number);
+    return (
+      a === 10 ||
+      a === 127 ||
+      a === 0 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254)
+    );
+  }
+  const lower = ip.toLowerCase();
+  return (
+    lower === "::1" ||
+    lower === "::" ||
+    lower.startsWith("fe80:") ||
+    lower.startsWith("fc") ||
+    lower.startsWith("fd") ||
+    lower.startsWith("::ffff:")
+  );
+}
+
+/** SSRF guard: operator-supplied URLs are fetched server-side, so internal
+ * targets (cloud metadata, intranet, loopback) and odd ports are refused. */
+async function assertPublicHttpUrl(url: string): Promise<URL> {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -74,6 +101,23 @@ export async function fetchUrlText(url: string): Promise<{ title: string; text: 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new AiProviderError("knowledge", `unsupported url scheme: ${parsed.protocol}`);
   }
+  if (parsed.port !== "" && parsed.port !== "80" && parsed.port !== "443") {
+    throw new AiProviderError("knowledge", "only default http/https ports are allowed");
+  }
+  let addresses: Array<{ address: string }>;
+  try {
+    addresses = await lookup(parsed.hostname, { all: true });
+  } catch {
+    throw new AiProviderError("knowledge", `dns failed: ${parsed.hostname}`);
+  }
+  if (addresses.length === 0 || addresses.some((a) => isBlockedIp(a.address))) {
+    throw new AiProviderError("knowledge", "url resolves to a non-public address");
+  }
+  return parsed;
+}
+
+export async function fetchUrlText(url: string): Promise<{ title: string; text: string }> {
+  await assertPublicHttpUrl(url);
   let res: Response;
   try {
     res = await fetch(url, {

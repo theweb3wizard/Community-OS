@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { communities } from "@/db/schema";
 import { ConfirmButton } from "@/components/dashboard/confirm-button";
+import { requireOperator } from "@/lib/authz";
 import { Card, EmptyState, SectionHeader } from "@/components/ui/primitives";
 import { GeminiClient } from "@/lib/ai/gemini";
 import {
@@ -17,6 +18,7 @@ const KINDS: KnowledgeKind[] = ["text", "faq", "url", "doc", "announcement", "po
 
 async function addSource(formData: FormData) {
   "use server";
+  await requireOperator();
   const communityId = String(formData.get("communityId") ?? "");
   const kind = String(formData.get("kind") ?? "") as KnowledgeKind;
   const title = String(formData.get("title") ?? "").trim();
@@ -42,6 +44,7 @@ async function addSource(formData: FormData) {
 
 async function removeSource(formData: FormData) {
   "use server";
+  await requireOperator();
   const id = String(formData.get("id") ?? "");
   const communityId = String(formData.get("communityId") ?? "");
   if (!id) redirect("/dashboard/knowledge?s=invalid");

@@ -249,6 +249,38 @@ Tests: `npm run onboarding:test` (fresh-community full flow + trace check).
 `community_settings` table holds retrieval/notification preferences honored
 by the support and approval flows.
 
+## Security model (audited Prompt 7)
+
+- Webhook: `X-Telegram-Bot-Api-Secret-Token` verified timing-safely; 401
+  without it; always 2xx afterwards (no retry storms); 1 MB body cap;
+  logging is best-effort so a DB outage can't wedge deliveries.
+- Dashboard: every mutating server action requires a session
+  (`requireOperator`); the layout redirect alone is not relied upon.
+- Approvals: unguessable per-approval tokens, linked-admin identity check,
+  atomic single-statement claims (execute-at-most-once without
+  transactions), expiry, forged-token safe no-ops, unauthorized attempts
+  logged as security events.
+- Knowledge URLs: SSRF-guarded (public DNS only, no private/loopback/
+  link-local targets, default ports only).
+- All SQL is parameterized (Drizzle); Telegram IDs stored as TEXT;
+  React-escaped rendering throughout; no `dangerouslySetInnerHTML`.
+
+## Limitations — not production-ready
+
+- **Single-operator trust model.** Any signed-in operator can act on every
+  community; there are no roles or per-community memberships. Demo
+  credentials (`operator@communityos.local`) are development-only.
+- **Runtime is not wired to the live webhook.** Ingestion persists and the
+  runtime is proven on demand, but autonomous Telegram actions only run via
+  tests/operations — deliberate until approval review matures.
+- **Gemini free tier is 20 generate-calls/day** (`gemini-3.8-flash`); embed
+  quota is separate. Heavy communities need billing. `npm run ai:live`
+  completes the live matrix after reset.
+- **Jev adapter is not live-tested** (no OpenRouter key/credit provided).
+- Neon pooler + direct URLs must both be configured (app vs migrations).
+- Approval DMs require the admin to have started the bot; no expiry sweeper
+  runs (expired approvals are rejected lazily on decision).
+
 ## Routes
 
 - `/` landing · `/login` sign-in · `/dashboard/*` (protected, redirects to

@@ -13,6 +13,26 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+const MAX_BODY_BYTES = 1_000_000;
+
+// Best-effort logging: if the database itself is down, still answer 2xx so
+// Telegram stops retrying a delivery we can never process right now.
+async function logIngress(
+  event: string,
+  detail: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await db.insert(activityLogs).values({
+      communityId: null,
+      actorType: "system",
+      event,
+      detail,
+    });
+  } catch {
+    // ignore — the 2xx response below is the contract
+  }
+}
+
 // Public endpoint (Telegram servers call it). Authentication is the
 // X-Telegram-Bot-Api-Secret-Token header set via setWebhook. Responses are
 // always 2xx after the secret check: Telegram retries non-2xx deliveries,
@@ -30,28 +50,23 @@ export async function POST(request: Request) {
   if (!timingSafeEqual(header, secret)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
+  const declared = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    await logIngress("telegram.oversized_update", { declared });
+    return NextResponse.json({ ok: true, stored: false });
+  }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    await db.insert(activityLogs).values({
-      communityId: null,
-      actorType: "system",
-      event: "telegram.invalid_json",
-      detail: {},
-    });
+    await logIngress("telegram.invalid_json", {});
     return NextResponse.json({ ok: true, stored: false });
   }
 
   const normalized = normalizeUpdate(body);
   if (!normalized.ok) {
-    await db.insert(activityLogs).values({
-      communityId: null,
-      actorType: "system",
-      event: "telegram.malformed_update",
-      detail: { reason: normalized.reason },
-    });
+    await logIngress("telegram.malformed_update", { reason: normalized.reason });
     return NextResponse.json({ ok: true, stored: false });
   }
 
@@ -66,14 +81,9 @@ export async function POST(request: Request) {
     const outcome = await runPipeline(normalized.event, { client });
     return NextResponse.json({ ok: true, status: outcome.status, outcome });
   } catch (error) {
-    await db.insert(activityLogs).values({
-      communityId: null,
-      actorType: "system",
-      event: "telegram.pipeline_error",
-      detail: {
-        updateId: normalized.event.updateId,
-        error: error instanceof Error ? error.message : "unknown",
-      },
+    await logIngress("telegram.pipeline_error", {
+      updateId: normalized.event.updateId,
+      error: error instanceof Error ? error.message : "unknown",
     });
     return NextResponse.json({ ok: true, stored: false });
   }

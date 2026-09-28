@@ -5,11 +5,13 @@ import { db } from "@/db";
 import { activityLogs } from "@/db/schema";
 import { CommunityPicker } from "@/components/dashboard/community-picker";
 import { Card, EmptyState, SectionHeader } from "@/components/ui/primitives";
+import { requireOperator } from "@/lib/authz";
 import { getCommunitySignals, summarizeCommunity } from "@/lib/ai/intelligence";
 import { resolveCommunity } from "@/lib/dashboard/community";
 
 async function regenerateSummary(formData: FormData) {
   "use server";
+  await requireOperator();
   const communityId = String(formData.get("communityId") ?? "");
   const communityName = String(formData.get("communityName") ?? "community");
   if (!communityId) redirect("/dashboard/intelligence?s=invalid");
